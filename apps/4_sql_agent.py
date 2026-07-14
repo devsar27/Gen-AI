@@ -6,6 +6,7 @@ from langchain_community.utilities import SQLDatabase
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from langgraph.checkpoint.memory import InMemorySaver
 from langchain.agents import create_agent
+import streamlit as st 
 
 db = SQLDatabase.from_uri("sqlite:///my_tasks.db")
 
@@ -22,7 +23,7 @@ db.run ("""
 model = ChatGroq(model = "openai/gpt-oss-20b")
 toolkit = SQLDatabaseToolkit(db= db, llm = model)
 tools = toolkit.get_tools()
-memory = InMemorySaver()
+
 
 system_prompt = """
 You are a task management assistant that interacts with a SQL database containing a 'tasks' table. 
@@ -41,18 +42,39 @@ CRUD OPERATIONS:
 Table schema: id, title, description, status(pending/in_progress/completed), created_at.
 """
 
-agent = create_agent(
-    model = model,
-    tools = tools,
-    checkpointer = memory,
-    system_prompt = system_prompt
-)
-
-while True:
-    query = input("User :")
-    response = agent.invoke(
-        {"messages": [{"role": "user" , "content": query}]},
-        {"configurable" : {"thread_id" : "1"}}
+@st.cache_resource   
+## This function should run only once per session. After the session is loaded, 
+# no matter how many queries the user asks, 
+# this function should not be called again. Since the function isn't called again, the agent won't be recreated.
+def get_agent():
+    agent = create_agent(
+        model = model,
+        tools = tools,
+        checkpointer = InMemorySaver(),
+        system_prompt = system_prompt
     )
-    result = response["messages"][-1].content
-    print("AI : ", result)
+    return agent 
+
+agent = get_agent()
+
+st.subheader("📋TaskBot - Manage Your Tasks")
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+for message in st.session_state.messages:
+     st.chat_message(message["role"]).markdown(message["content"])
+
+prompt = st.chat_input("Ask me to manage your tasks ?")
+if prompt:
+    st.chat_message("user").markdown(prompt)
+    st.session_state.messages.append({"role": "user", "content" : prompt})
+    with st.chat_message("ai"):
+        with st.spinner("Processing..."):
+            response = agent.invoke(
+                {"messages": [{"role": "user" , "content": prompt}]},
+                {"configurable" : {"thread_id" : "1"}}
+            )
+            result = response["messages"][-1].content
+            st.markdown(result)
+            st.session_state.messages.append({"role": "ai", "content" : result})
