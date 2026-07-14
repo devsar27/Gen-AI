@@ -5,6 +5,7 @@ from langchain_groq import ChatGroq
 from langchain_community.utilities import SQLDatabase
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from langgraph.checkpoint.memory import InMemorySaver
+from langchain.agents import create_agent
 
 db = SQLDatabase.from_uri("sqlite:///my_tasks.db")
 
@@ -40,4 +41,18 @@ CRUD OPERATIONS:
 Table schema: id, title, description, status(pending/in_progress/completed), created_at.
 """
 
+agent = create_agent(
+    model = model,
+    tools = tools,
+    checkpointer = memory,
+    system_prompt = system_prompt
+)
 
+while True:
+    query = input("User :")
+    response = agent.invoke(
+        {"messages": [{"role": "user" , "content": query}]},
+        {"configurable" : {"thread_id" : "1"}}
+    )
+    result = response["messages"][-1].content
+    print("AI : ", result)
